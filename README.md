@@ -1,4 +1,4 @@
-Predicting Citibike Bike Speeds
+#Predicting Citibike Bike Speeds
 
 Can bikespeeds be predicted for those riders using the Citibikes in New York City?
 Although the exact route, and therefore the precise distance travelled, is unknown for an given rider with some assumptions and enough data speed prediction is possible. The influence of weather and geography is also investigated.
