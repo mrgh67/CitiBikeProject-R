@@ -18,8 +18,8 @@ Elevation was correlated but New York City is largely flat!
 On a 1.85 mile trip a 13 degree Fahrenheit change in temperature can effect your trip speed by approximately 0.3 mph, so allow yourself an extra 30 seconds in the cold!!
 
 A simple polynomial was fitted to the data relating log(speed) to temp squared + elevation.
-50:50 split of data into training and test sets
-Data normalized to zero mean unit variance
+50:50 split of data into training and test sets.
+Data normalized to zero mean unit variance.
 
 This project was presented at the following Meetup:
 http://www.meetup.com/NYC-Open-Data/events/218737696/
