@@ -1,0 +1,550 @@
+---
+title: "Bike Speed and Weather"
+author: Mark Holt
+date: 24 Nov 2014
+output: 
+  ioslides_presentation:
+    widescreen: true
+  output:
+    pdf_document
+---
+
+## Bike Speed and Weather | Project for Data Science with R: Data Analysis
+
+Acknowledgements:
+
+- **Citibike operated by NYC Bike Share**
+
+      provided all primary data
+
+
+- **MapQuest Open Platform Web Services**
+
+      provided all distance and elevation data
+
+
+- **Weather Underground**
+
+      provided all weather information
+
+
+## Aims
+
+- To collect and integrate one years data from disparate data sources
+
+- To estimate the bike speeds of the fastest riders
+
+- To relate temperature and elevation with bike speed
+
+- To predict journey time given weather conditions
+
+## Citibike Data
+
+- Substantial data available
+
+- start station: id, lat, long, address
+
+- end station: id, lat, long, address
+
+- trip: start time, end time, trip duration, bike id
+
+- user: customer or subscriber, birth year, gender
+
+## Data Pre-processing 1
+
+- Filter the citibike data:
+
+- Men, Subscribers, Mon - Fri, 9.00 - 5.00pm, Workdays only (excluded holidays)
+
+- Find the fatest riders for all the station pairs
+
+## For Each Months Data
+
+```{r, echo=FALSE}
+#install.packages("ggplot2")
+
+library("ggplot2")
+
+load("dfS1Jan.Rda")
+
+dfS1Jan$number = seq(1, 24323)
+
+dfS1Jan$station_string = paste0(as.character(dfS1Jan$start.station.id)," - ", as.character(dfS1Jan$end.station.id))
+
+bp <- ggplot(dfS1Jan[1:25,], aes(x=factor(station_string), y=no_of_trips)) + geom_bar(stat="identity", fill="pink", colour="darkred", width=0.4) 
+
+bp + theme( axis.text.x = element_text( angle = 30, hjust = 1, vjust = 0.75), axis.title.x = element_text(vjust=-1)) + ggtitle("Number of trips between two stations") + xlab("Start station id - End station id") + ylab("Number of Trips")
+```
+
+## Finding the Fatest Cyclist
+
+```{r, echo=FALSE}
+library("ggplot2")
+
+remove_outliers = function(x) {
+  thresholdh = quantile(x, 0.75) + 1.5*IQR(x)
+  thresholdl = quantile(x, 0.25) - 1.5*IQR(x)
+  filtered_x = ifelse(x > thresholdh, NA, x)
+	filtered_x = ifelse(filtered_x < thresholdl, NA, filtered_x)
+	return(filtered_x)
+}
+
+load("dfS1Jan.Rda")
+
+dfS1Jan$number = seq(1, 24323)
+
+dfS1Jan$min_duration = remove_outliers(dfS1Jan$min_duration)
+
+dfS1Jan = dfS1Jan[1:50,]
+
+bp1 <- ggplot(dfS1Jan, aes(number)) + geom_point(aes(y=dfS1Jan$min_duration)) + geom_line(aes(y=dfS1Jan$median_duration), col="red")
+
+bp1 + theme(axis.title.x = element_text(vjust=-1)) + ggtitle("Median and Minimum Trip Duration") + xlab("Trip Number") + ylab("Duration")
+```
+
+
+## Data Pre-processing 2
+
+- *MapQuest API* provides a "distance" from starting lat/long to ending lat/long
+
+- From this data derive bike speed (in mph)
+
+- Second *MapQuest API* call provides elevation bewtween start and end stations
+
+- *Wunderground API* returns historical weather data close to the starting time of the trip
+
+- Obtain observations for temp, windspeed, windchill, precipitation, humidity
+
+
+## Do the derived bike speeds seem credible?
+
+```{r, echo=FALSE}
+cleanData = function() {
+  load("aFCC.Rda")
+  aFCC$speed = remove_outliers(aFCC$speed)
+  aFCC$elev = remove_outliers(aFCC$elev)
+  aFCC$hum = remove_outliers(aFCC$hum)
+  
+  mask = aFCC$precip < 0
+  aFCC[mask,"precip"] = 0
+
+  mask = aFCC$windspeed < 0
+  aFCC[mask, "windspeed"] = NA
+
+  mask = aFCC$windchill < -500
+  aFCC[mask, "windchill"] = NA
+  
+  return(aFCC)
+}
+#cleanFCC = cleanData()
+#median(cleanFCC$speed, na.rm=TRUE)
+```
+
+- Pablo Jensen at the École Normale Supérieure de Lyon, found:
+
+    Over an average trip, cyclists travel 1.55 miles in 14.7 minutes 
+    
+    Average speed ~ 6.2 mph.
+
+    Rush hour average speed ~ 9.3 mph
+    
+- Citibike data speed estimates ~ 10.6 mph
+
+- Perhaps the MapQuest route over-estimate the distance.
+
+## Data Visualization 1 - Speed
+
+```{r, echo=FALSE}
+library(ggplot2)
+cleanAFCC = cleanData()
+keeps = c("starttime", "speed")
+cleanAFCC = cleanAFCC[, keeps]
+cleanAFCC = na.omit(cleanAFCC)
+p1<-ggplot(cleanAFCC, aes(x=starttime, y=speed)) + geom_point(col="blue")
+p1 + ggtitle("Speed Data") + xlab("Time") + ylab("Speed (mph)")
+```
+
+
+## Data Visualization 2 - Temp
+
+```{r, echo=FALSE}
+library(ggplot2)
+cleanBFCC = cleanData()
+keeps = c("starttime", "temp")
+cleanBFCC = cleanBFCC[, keeps]
+cleanBFCC = na.omit(cleanBFCC)
+p2<-ggplot(cleanBFCC, aes(x=starttime, y=temp)) + geom_point(col="blue")
+p2 + ggtitle("Temperature Data") + xlab("Time") + ylab("Temperature (Fahr)")
+```
+
+## Data Visualization 3 - Elevation
+
+```{r, echo=FALSE}
+library(ggplot2)
+cleanCFCC = cleanData()
+keeps = c("starttime", "elev")
+cleanCFCC = cleanCFCC[, keeps]
+cleanCFCC = na.omit(cleanCFCC)
+library(ggplot2)
+p4<-ggplot(cleanCFCC, aes(x=elev)) + geom_histogram(binwidth = 2, color="black", fill="white")   
+p4 + ggtitle("Elevation Histogram") + xlab("Elevation (Feet)") + ylab("Count")
+```
+
+## Other Weather Variables?
+
+- Hoped to use precipitation (rain), but the data reported from Wunderground was sparse. 
+
+- Public blogs suggest they have a bug in their historical data reporting for rainfall!
+
+- Windspeed: Data sparsely reported. Mostly reported as 0 mph.
+
+- Humidity: Correlated more with temperature
+
+- Windchill: Data sparsely reported. Correlated with temperature
+
+## Pairwise correlations
+
+```{r, echo=FALSE}
+#install.packages("corrplot")
+library(corrplot)
+cleanFCC = cleanData() 
+keeps = c("speed", "temp", "elev", "windspeed", "windchill", "hum", "precip")
+newFCC = na.omit(cleanFCC[, keeps])
+mcor = cor(newFCC)
+corrplot(mcor)
+#round(mcor, digits=2)
+```
+
+
+## Speed and Temperature
+
+```{r, echo=FALSE}
+library(ggplot2)
+
+#This code should be in a function, but time ran short
+cleanFCC = cleanData()
+
+bb=c()
+mask = strftime(cleanFCC$starttime, "%m") == "02"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "03"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "04"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "05"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "06"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "07"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "08"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "09"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "10"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "11"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "12"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "01"
+bbm = median(cleanFCC$speed[mask], na.rm=TRUE)
+bb = c(bb, bbm)
+
+
+b=c()
+mask = strftime(cleanFCC$starttime, "%m") == "02"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "03"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "04"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "05"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "06"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "07"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "08"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "09"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "10"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "11"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "12"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+mask = strftime(cleanFCC$starttime, "%m") == "01"
+bm = log(median(cleanFCC$temp[mask], na.rm=TRUE))
+b = c(b, bm)
+
+
+months = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+bb = bb - mean(bb)
+b = b - mean(b)
+
+rdf = data.frame(months, bb, b)
+colnames(rdf)[2] = "speed"
+colnames(rdf)[3] = "temp"
+
+#, fill="white"
+#, fill="red"
+
+p<-ggplot(rdf, aes(months, color=)) + geom_point(aes(y=rdf$temp,  color="Temp"), size=6, shape=21) + geom_point(aes(y=rdf$speed, color="Speed"), size=6, shape = 21)
+
+p + theme(axis.title.x = element_text(vjust=-1)) + ggtitle("Monthly Median Temperature and Median Speed") + xlab("Month") + ylab("Zero Mean Speed & Temp") + scale_x_discrete(limits = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")) + scale_color_manual(values=c("Temp"="blue4", "Speed"="red4"))
+
+```
+
+
+```{r, echo=FALSE}
+#library(car)
+#newFCC = cleanData()
+#keeps = c("speed", "temp")
+#newFCC = na.omit(cleanFCC[, keeps])
+
+#model = lm(speed ~ temp, data=newFCC)
+#boxCox(model)
+```
+
+
+## Selecting the Model
+
+- Randomly split data into training and test set (50:50)
+
+- BoxCox plot: transform speed into log(speed)
+
+- Normalized the data (zero mean and unit variance)
+
+- Tested 5 models relating speed to temperature and elevation
+
+- "Best" model: Log(Speed) ~ temp + temp-squared + elev 
+
+- "Best" meaning lowest MSE on the unseen test data, and lowest AIC
+
+- MSE Test = 0.99
+
+```{r, echo=FALSE}
+library(car)
+
+calcMSE = function(x,y) {
+  squarederror = (y-x)*(y-x)
+  return(mean(squarederror, na.rm = TRUE))
+}
+
+
+cleanFCC = cleanData()
+keeps = c("speed", "temp", "elev")
+newFCC = na.omit(cleanFCC[, keeps])
+newFCC$logspeed = log(newFCC$speed)
+
+#make these global variables
+mnLS = mean(newFCC$logspeed)
+mnS = mean(newFCC$speed)
+mnT = mean(newFCC$temp)
+mnE = mean(newFCC$elev)
+sdLS = sd(newFCC$logspeed)
+sdS = sd(newFCC$speed)
+sdT = sd(newFCC$temp)
+sdE = sd(newFCC$elev)
+
+normalizeVar = function(newFCC) {
+  newFCC$logspeed = (newFCC$logspeed - mnLS)/sdLS
+  newFCC$speed = (newFCC$speed - mnS)/sdS
+  newFCC$temp = (newFCC$temp - mnT)/sdT
+  newFCC$elev = (newFCC$elev - mnE)/sdE
+ 
+  return(newFCC)
+}
+
+newFCC = normalizeVar(newFCC)
+
+#random sequence for obtaining the training set and test set
+mask = sample(0:1, length(newFCC$speed), replace=TRUE, prob=c(0.5, 0.5))
+train = newFCC[mask==0,]
+test = newFCC[mask==1,]
+
+model1 = lm(speed ~ temp, data = train)
+model2 = lm(speed ~ temp + elev, data=train)
+model3 = lm(speed ~ temp + I(temp^2), data = train)
+model4 = lm(speed ~ temp + elev + I(temp^2), data=train)
+model5 = lm(logspeed ~ temp + elev + I(temp^2), data=train)
+
+testModels = function (model) {
+  #cat(AIC(model), "\n")
+  yhat = predict(model, newdata=test)
+  nmse = calcMSE(yhat, test$speed)
+  #cat(nmse,"\n")
+}
+
+testModels(model1)
+testModels(model2)
+testModels(model3)
+testModels(model4)
+testModels(model5)
+
+#yhat = predict(model5, newdata=test)
+#plot(yhat, ylim=c(-3,3))
+#points(test$logspeed, col="red")
+```
+
+
+## Using the Model
+
+- Plan your trip
+
+- Example: E34 & Vanderbilt  to  11th & W27
+
+- Input the station id's: 318 & 458
+
+- Use MapQuest Api to get distance and elevation: 1.942 miles, 0 feet
+
+- Use Wunderground Api to get low and high forecast for the day: 23 F & 36 F for Tuesday 18th Nov 2014
+
+- Use the model to predict the speeds: 10.1 mph & 10.4 mph
+
+- Estimate trip times: 11 mins & 11.5 mins
+
+```{r,echo=FALSE}
+#NB: API keys removed
+
+calcNewSpeed = function(tp, ev) {
+  tp = (tp - mnT)/sdT
+  ev = (ev - mnE)/sdE
+  tedf = data.frame(temp = c(tp), elev = c(ev))
+  yh = predict(model5, newdata=tedf)
+  logpspeed = (yh * sdLS)  + mnLS
+  pspeed = exp(logpspeed)
+  return(pspeed)
+}
+
+
+estTime = function(st, ed) {
+  myMapQuestKey = ""
+
+  fromLat = aFCC[aFCC$start.station.id==st,"start.station.latitude"][1]
+	fromLong = aFCC[aFCC$start.station.id==st,"start.station.longitude"][1]
+	toLat = aFCC[aFCC$start.station.id==ed,"start.station.latitude"][1]
+	toLong = aFCC[aFCC$start.station.id==ed,"start.station.longitude"][1]
+  
+  fromLat
+  fromLong
+  toLat
+  toLong
+	
+	urlA = paste0("http://open.mapquestapi.com/directions/v2/route?key=",myMapQuestKey,"&from=",fromLat,",",fromLong,"&to=",toLat,",",toLong,"&routeType=bicycle&doReverseGeocode=True&narrativeType=none&cyclinggRoadFactor=1.0")
+
+	webA = getURL(urlA)
+	rawA = fromJSON(webA)
+	distance = rawA$route$distance
+  #distance
+  
+  urlElev = paste0("http://open.mapquestapi.com/elevation/v1/profile?key=",myMapQuestKey,"&latLngCollection=",fromLat,",",fromLong,",",toLat,",",toLong)
+  webB = getURL(urlElev)
+	rawB = fromJSON(webB)
+	heightdifferential = rawB$elevationProfile[[2]][["height"]]-rawB$elevationProfile[[1]][["height"]]
+  #heightdifferential
+  if(abs(heightdifferential) > 50)
+    heightdifferential= 0
+  ev=heightdifferential
+  
+  #http://api.wunderground.com/api/34fd63423ce8c852/forecast/q/CA/San_Francisco.json
+  myWunderGroundAPI= ""
+  urlWeatherWG = paste0("http://api.wunderground.com/api/", myWunderGroundAPI, "/forecast/q/NY/New_York_City.json")
+	webWG = getURL(urlWeatherWG)
+	rawWG = fromJSON(webWG)
+  
+  tpH = rawWG$forecast$simpleforecast$forecastday[[1]]$high["fahrenheit"]
+  tpH = as.numeric(tpH)
+  tpL = rawWG$forecast$simpleforecast$forecastday[[1]]$low["fahrenheit"]
+  tpL = as.numeric(tp)
+  
+  spH = calcNewSpeed(tpH, ev)
+  #spH
+  spL = calcNewSpeed(tpL, ev)
+  #spL
+  ptH = distance * 60/ spH
+  ptL = distance * 60 / spL
+
+  tLi = c(tpH, ptH, tpL, ptL)
+  return(tLi)
+}
+
+#eT = estTime(318,458)
+#cat(eT,"\n")
+```
+
+
+
+```{r, echo=FALSE}
+#install.packages("lmtest")
+#install.packages("nlme")
+#library(lmtest) 
+#library(nlme)
+#model = lm(log(speed) ~ temp + elev + I(temp^2), data=train)
+#AIC(model)
+#summary(model)
+#acf(model$residuals)
+#dwtest(model)
+#influencePlot(model)
+```
+
+
+## Conclusions
+
+ - Speed and temperature are correlated, but does the temperature *result* in a different speed?
+ 
+ - Temperature is known to be very important to physiology. 
+ 
+ - Incline and speed are related, but inclines in NYC are minimal
+ 
+ - The route of each cyclist is not actually known but speed can be approximated
+ 
+ - It would be interesting to know the true speeds of the fastest cyclists
+ 
+ - Data from disparate sources can be utilized in an integrated and therefore meaningful manner
